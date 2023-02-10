@@ -11,6 +11,8 @@ public class Controller : MonoBehaviour
     public Button RightButton;
     public Button BrowseButton;
     public Button SaveButton;
+    public Button ClearButton;
+
     public Image Img;
 
     public GameObject RectangePrefab;
@@ -35,14 +37,27 @@ public class Controller : MonoBehaviour
     private bool bCanBeResized;
     private float scaleFactor;
 
+    string progresDir { get => workingDirectory + "/Progress"; }
+
     private void Awake()
     {
         LeftButton.onClick.AddListener(Left);
         RightButton.onClick.AddListener(Right);
         BrowseButton.onClick.AddListener(Browse);
         SaveButton.onClick.AddListener(SaveBoxesToDisk);
+        ClearButton.onClick.AddListener(Clear);
 
         canvas = GetComponent<Canvas>();
+    }
+
+    private void Clear()
+    {
+        foreach (var box in Boxes)
+        {
+            Destroy(box);
+        }
+        Boxes.Clear();
+
     }
 
     private void Browse()
@@ -99,11 +114,9 @@ public class Controller : MonoBehaviour
             var imgHeight = Img.GetComponent<RectTransform>().rect.height;
             scaleFactor = Tex2D.height / imgHeight;
         }
-        foreach(var box in Boxes)
-        {
-            Destroy(box);
-        }
-        Boxes.Clear();
+        Clear();
+
+        LoadBoxesFromDisk();
     }
 
 
@@ -144,12 +157,51 @@ public class Controller : MonoBehaviour
 
     }
    
+    private void LoadBoxesFromDisk()
+    {
+        string ext = "." + Paths[pathIndex].Extension;
+        string name = Paths[pathIndex].Name.Trim(ext.ToCharArray());
+        string fileName = progresDir + "/" + name + ".json";
+        
+
+        if (!File.Exists(fileName))
+            return;
+
+        string jsonString = File.ReadAllText(fileName).TrimStart('[').TrimEnd(']');
+        var boxesValues = jsonString.Split(",\n", StringSplitOptions.RemoveEmptyEntries);
+
+        foreach(string box in boxesValues)
+        {
+            //if (!box.StartsWith('{'))
+            //    box.Insert(0, "{");
+
+            //if (!box.EndsWith('}'))
+            //    box.Insert(box.Length, "}");
+
+            CustomRectangle rect = JsonUtility.FromJson<CustomRectangle>(box);
+
+            CurrentBox = Instantiate(RectangePrefab, StartLocation, Quaternion.identity);
+            CurrentBox.transform.SetParent(Img.transform);
+            Boxes.Add(CurrentBox);
+
+            var rt = CurrentBox.GetComponent<RectTransform>();
+            if(rt != null)
+            {
+
+                rt.sizeDelta = new Vector2(Math.Abs(rect.X2 - rect.X1), Math.Abs( rect.Y2 - rect.Y1)) / scaleFactor;
+                rt.anchoredPosition = new Vector2((rect.X2 + rect.X1) / 2, (rect.Y2 + rect.Y1) / 2) / scaleFactor;
+            }
+        }
        
+
+    }
+
     private void SaveBoxesToDisk()
     {
         string json = "[";
         //List<CustomRectangle> AllBoxes = new List<CustomRectangle>();
         for (int i = 0; i < Boxes.Count; i++ )
+
         {
             var rt = Boxes[i].GetComponent<RectTransform>();
             int xtop = (int)((rt.anchoredPosition.x + rt.rect.width / 2) * scaleFactor) ;
@@ -160,7 +212,7 @@ public class Controller : MonoBehaviour
 
             CustomRectangle rect = new CustomRectangle() { X1 = xtop, Y1 = ytop, X2 = xbot, Y2 = ybot };
            
-            json += JsonUtility.ToJson(rect, true); 
+            json += JsonUtility.ToJson(rect); 
             if(i != Boxes.Count -1)
             {    
                 json += ",\n";
@@ -168,22 +220,22 @@ public class Controller : MonoBehaviour
         }
         json += "]";
   
-        if (workingDirectory == null)
+
+        if(workingDirectory == null)
         {
-            workingDirectory = Directory.GetCurrentDirectory() + "/Progress/";
-            if (!Directory.Exists(workingDirectory))
-            {
-                Directory.CreateDirectory(workingDirectory);
-            }
+            Debug.LogError("workingDirectory is null");
+            return;
         }
 
         string ext = "." + Paths[pathIndex].Extension;
         string name = Paths[pathIndex].Name.Trim(ext.ToCharArray());
-        File.WriteAllText(workingDirectory + "/" + name+".json", json);
-
-
-
-
+        
+        if(!Directory.Exists(progresDir))
+        {
+            Directory.CreateDirectory(progresDir);
+        }
+        string fileName = progresDir + "/" + name + ".json";
+        File.WriteAllText(fileName, json);
     }
 
 
